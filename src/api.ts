@@ -7,7 +7,19 @@
 function apiBase(): string {
   const raw = import.meta.env.VITE_API_URL as string | undefined
   if (raw !== undefined && raw !== '') {
-    return raw.replace(/\/$/, '')
+    const cleaned = raw.trim().replace(/\/$/, '')
+    if (/^https?:\/\//i.test(cleaned)) {
+      return cleaned
+    }
+    if (/^\/\//.test(cleaned)) {
+      return `https:${cleaned}`
+    }
+    // Railway/Vercel envs are often set as plain domain by mistake.
+    // Promote such value to absolute HTTPS URL to avoid relative fetches.
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(cleaned)) {
+      return `https://${cleaned}`
+    }
+    return cleaned
   }
   if (import.meta.env.DEV) {
     return ''
