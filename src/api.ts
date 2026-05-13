@@ -123,6 +123,7 @@ export type ParsePreviewResponse = {
   }[]
   needs_llm_confirmation?: boolean
   llm_confirmation_reason?: string
+  llm_items_count?: number
 }
 
 export type ParseHistoryItem = {

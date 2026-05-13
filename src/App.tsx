@@ -22,6 +22,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -34,6 +41,14 @@ import { FileSpreadsheet, Loader2, LogOut } from 'lucide-react'
 
 const TOKEN_KEY = 'dolionhelper_token'
 const USER_KEY = 'dolionhelper_user'
+type UnmatchedStatus = 'pending' | 'skipped' | 'added'
+type InputMode = 'select' | 'manual'
+type UnmatchedView = 'active' | 'skipped'
+type UiUnmatchedItem = ParsePreviewResponse['unmatched'][number] & {
+  id: string
+  status: UnmatchedStatus
+  inputMode: InputMode
+}
 
 function loadStoredAuth(): { token: string; email: string } | null {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -51,10 +66,13 @@ export default function App() {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [rows, setRows] = useState<Record<string, string>[]>([])
-  const [unmatched, setUnmatched] = useState<ParsePreviewResponse['unmatched']>([])
+  const [unmatched, setUnmatched] = useState<UiUnmatchedItem[]>([])
   const [needsLlmConfirm, setNeedsLlmConfirm] = useState(false)
   const [llmReason, setLlmReason] = useState('')
-  const [picked, setPicked] = useState<Record<number, string>>({})
+  const [picked, setPicked] = useState<Record<string, string>>({})
+  const [customNames, setCustomNames] = useState<Record<string, string>>({})
+  const [llmItemsCount, setLlmItemsCount] = useState<number | null>(null)
+  const [unmatchedView, setUnmatchedView] = useState<UnmatchedView>('active')
   const [historyItems, setHistoryItems] = useState<ParseHistoryItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -63,12 +81,20 @@ export default function App() {
     if (rows.length === 0) return []
     return Object.keys(rows[0])
   }, [rows])
+  const pendingUnmatched = useMemo(
+    () => unmatched.filter((u) => u.status === 'pending'),
+    [unmatched],
+  )
+  const skippedUnmatched = useMemo(
+    () => unmatched.filter((u) => u.status === 'skipped'),
+    [unmatched],
+  )
   const canDownload = Boolean(
     message.trim() &&
       !busy &&
       !error &&
       !needsLlmConfirm &&
-      unmatched.length === 0,
+      pendingUnmatched.length === 0,
   )
   const previewButtonLabel = rows.length > 0 ? 'Пересоздать таблицу' : 'Создать таблицу'
 
@@ -131,6 +157,9 @@ export default function App() {
     setNeedsLlmConfirm(false)
     setLlmReason('')
     setPicked({})
+    setCustomNames({})
+    setLlmItemsCount(null)
+    setUnmatchedView('active')
     setHistoryItems([])
     setMessage('')
   }
@@ -148,10 +177,13 @@ export default function App() {
         body: JSON.stringify({ message }),
       })
       setRows(data.rows ?? [])
-      setUnmatched(data.unmatched ?? [])
+      setUnmatched(makeUiUnmatched(data.unmatched ?? []))
       setNeedsLlmConfirm(Boolean(data.needs_llm_confirmation))
       setLlmReason(data.llm_confirmation_reason ?? '')
       setPicked({})
+      setCustomNames({})
+      setLlmItemsCount(data.llm_items_count ?? null)
+      setUnmatchedView('active')
       if (data.needs_llm_confirmation) {
         setError(null)
       }
@@ -180,10 +212,13 @@ export default function App() {
         },
       )
       setRows(data.rows ?? [])
-      setUnmatched(data.unmatched ?? [])
+      setUnmatched(makeUiUnmatched(data.unmatched ?? []))
       setNeedsLlmConfirm(false)
       setLlmReason('')
       setPicked({})
+      setCustomNames({})
+      setLlmItemsCount(data.llm_items_count ?? null)
+      setUnmatchedView('active')
       await loadHistory(auth.token)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ошибка LLM fallback')
@@ -192,28 +227,50 @@ export default function App() {
     }
   }
 
-  const addSuggestionToRows = (idx: number) => {
-    const item = unmatched[idx]
+  const addSuggestionToRows = (id: string) => {
+    const item = unmatched.find((u) => u.id === id)
     if (!item) return
-    const selectedName = picked[idx] || item.candidates[0]?.name
-    if (!selectedName) return
+    const customName = (customNames[id] ?? '').trim()
+    const selectedName = picked[id] || item.candidates[0]?.name
     const selected = item.candidates.find((c) => c.name === selectedName)
-    if (!selected) return
+    const finalName = item.inputMode === 'manual' ? customName : selected?.name || customName
+    if (!finalName) return
 
     const nextRow: Record<string, string> = {
       'Клиентское название': item.client_name,
-      'Номенклатура': selected.name,
+      'Номенклатура': finalName,
       'Количество': item.quantity,
-      'Ед. изм.': item.unit || selected.unit || 'шт',
-      'Уверенность': `${Math.round(selected.score * 100)}%`,
+      'Ед. изм.': item.unit || selected?.unit || 'шт',
+      'Уверенность': item.inputMode === 'manual'
+        ? 'Ручной ввод'
+        : `${Math.round((selected?.score ?? 0) * 100)}%`,
     }
     setRows((prev) => [...prev, nextRow])
-    setUnmatched((prev) => prev.filter((_, i) => i !== idx))
+    setUnmatched((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: 'added' } : u)),
+    )
     setPicked((prev) => {
       const copy = { ...prev }
-      delete copy[idx]
+      delete copy[id]
       return copy
     })
+    setCustomNames((prev) => {
+      const copy = { ...prev }
+      delete copy[id]
+      return copy
+    })
+  }
+
+  const skipUnmatched = (id: string) => {
+    setUnmatched((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: 'skipped' } : u)),
+    )
+  }
+
+  const restoreUnmatched = (id: string) => {
+    setUnmatched((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: 'pending' } : u)),
+    )
   }
 
   const downloadXlsx = async () => {
@@ -378,7 +435,7 @@ export default function App() {
   return (
     <div className="min-h-svh bg-fixed bg-gradient-to-br from-white via-amber-50 to-yellow-200">
       <header className="border-border bg-card/50 sticky top-0 z-10 border-b backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-3">
             <img
               src={mascotBee}
@@ -402,7 +459,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+      <main className="mx-auto w-full max-w-[1280px] space-y-6 px-4 py-8">
         {error ? (
           <Alert variant="destructive">
             <AlertTitle>Ошибка</AlertTitle>
@@ -411,7 +468,7 @@ export default function App() {
         ) : null}
 
         <div className="grid gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-8">
+          <div className="lg:col-span-7">
             <Card>
               <CardHeader>
                 <CardTitle>Сообщение</CardTitle>
@@ -449,7 +506,7 @@ export default function App() {
             </Card>
           </div>
 
-          <div className="lg:col-span-4">
+          <div className="lg:col-span-5">
             {needsLlmConfirm ? (
               <Card>
                 <CardHeader>
@@ -462,6 +519,11 @@ export default function App() {
                   <p className="text-muted-foreground text-sm">
                     Причина: {llmReason || 'сложная структура сообщения'}
                   </p>
+                  {llmItemsCount !== null ? (
+                    <p className="text-muted-foreground text-sm">
+                      Нейронка вернула позиций: {llmItemsCount}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" onClick={runLlmFallback} disabled={busy}>
                       {busy ? <Loader2 className="animate-spin" /> : null}
@@ -481,42 +543,157 @@ export default function App() {
                   </div>
                 </CardContent>
               </Card>
-            ) : unmatched.length > 0 ? (
-              <Card>
+            ) : unmatched.some((u) => u.status !== 'added') ? (
+              <Card className="max-h-[560px]">
                 <CardHeader>
                   <CardTitle>Нужен выбор сотрудника</CardTitle>
                   <CardDescription>
-                    Для этих позиций не найдено точное совпадение. Выберите вариант из сметы и добавьте в таблицу.
+                    Эти позиции не найдены в смете автоматически. Заполните вручную или выберите близкий вариант.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {unmatched.map((item, idx) => (
-                    <div key={`${item.client_name}-${idx}`} className="border-border rounded-md border p-3 space-y-2">
+                <CardContent className="space-y-4 overflow-y-auto">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={unmatchedView === 'active' ? 'default' : 'outline'}
+                      onClick={() => setUnmatchedView('active')}
+                    >
+                      В работе ({pendingUnmatched.length})
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={unmatchedView === 'skipped' ? 'default' : 'outline'}
+                      onClick={() => setUnmatchedView('skipped')}
+                    >
+                      Пропущенные ({skippedUnmatched.length})
+                    </Button>
+                  </div>
+                  <div className="rounded-md border border-amber-200/70 bg-amber-50/70 p-3 text-sm">
+                    <p className="font-medium text-amber-900">Позиции требуют подтверждения сотрудником</p>
+                    <p className="mt-1 text-amber-800">
+                      Ничего не попадет в итоговую таблицу, пока вы не нажмете «Добавить в таблицу» для каждой позиции.
+                    </p>
+                  </div>
+                  {(unmatchedView === 'active' ? pendingUnmatched : skippedUnmatched).length === 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      {unmatchedView === 'active'
+                        ? 'Нет карточек в работе.'
+                        : 'Нет пропущенных карточек.'}
+                    </p>
+                  ) : null}
+                  {(unmatchedView === 'active' ? pendingUnmatched : skippedUnmatched).map((item) => (
+                    <div
+                      key={item.id}
+                      className={`border-border rounded-md border p-3 space-y-2 transition-opacity ${
+                        item.status === 'skipped' ? 'opacity-45' : 'opacity-100'
+                      }`}
+                    >
                       <p className="text-sm font-medium">
                         {item.client_name} · {item.quantity} {item.unit || 'шт'}
                       </p>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={item.inputMode === 'select' ? 'default' : 'outline'}
+                            onClick={() =>
+                              setUnmatched((prev) =>
+                                prev.map((u) =>
+                                  u.id === item.id ? { ...u, inputMode: 'select' } : u,
+                                ),
+                              )
+                            }
+                            disabled={item.status === 'skipped'}
+                          >
+                            Вариант из сметы
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={item.inputMode === 'manual' ? 'default' : 'outline'}
+                            onClick={() =>
+                              setUnmatched((prev) =>
+                                prev.map((u) =>
+                                  u.id === item.id ? { ...u, inputMode: 'manual' } : u,
+                                ),
+                              )
+                            }
+                            disabled={item.status === 'skipped'}
+                          >
+                            Ручной ввод
+                          </Button>
+                        </div>
+                        {item.inputMode === 'select' && item.candidates.length > 0 ? (
+                          <Select
+                            value={picked[item.id] ?? item.candidates[0]?.name ?? ''}
+                            onValueChange={(value) =>
+                              setPicked((prev) => ({ ...prev, [item.id]: value }))
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Выберите вариант из сметы" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {item.candidates.map((c) => (
+                                <SelectItem key={c.name} value={c.name}>
+                                  {c.name} ({Math.round(c.score * 100)}%)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : item.inputMode === 'select' ? (
+                          <p className="text-muted-foreground text-xs">
+                            Подходящие варианты в смете не найдены — заполните вручную.
+                          </p>
+                        ) : null}
+                        {item.inputMode === 'manual' ? (
+                          <Input
+                            placeholder="Впишите свое название для таблицы"
+                            value={customNames[item.id] ?? ''}
+                            disabled={item.status === 'skipped'}
+                            onChange={(ev) =>
+                              setCustomNames((prev) => ({ ...prev, [item.id]: ev.target.value }))
+                            }
+                          />
+                        ) : null}
+                        <p className="text-muted-foreground text-xs">
+                          Текущий режим: {item.inputMode === 'select' ? 'выбор из сметы' : 'ручной ввод'}
+                        </p>
+                      </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <select
-                          className="border-border bg-background w-full min-w-0 rounded-md border px-2 py-1 text-sm"
-                          value={picked[idx] ?? item.candidates[0]?.name ?? ''}
-                          onChange={(ev) =>
-                            setPicked((prev) => ({ ...prev, [idx]: ev.target.value }))
-                          }
-                        >
-                          {item.candidates.map((c) => (
-                            <option key={c.name} value={c.name}>
-                              {c.name} ({Math.round(c.score * 100)}%)
-                            </option>
-                          ))}
-                        </select>
                         <Button
                           type="button"
                           size="sm"
                           className="w-full sm:w-auto"
-                          onClick={() => addSuggestionToRows(idx)}
+                          disabled={unmatchedView === 'skipped'}
+                          onClick={() => addSuggestionToRows(item.id)}
                         >
                           Добавить в таблицу
                         </Button>
+                        {item.status === 'skipped' ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            onClick={() => restoreUnmatched(item.id)}
+                          >
+                            Вернуть в работу
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            onClick={() => skipUnmatched(item.id)}
+                          >
+                            Пропустить
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -601,4 +778,13 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function makeUiUnmatched(items: ParsePreviewResponse['unmatched']): UiUnmatchedItem[] {
+  return items.map((item, idx) => ({
+    ...item,
+    id: `${item.client_name}-${item.quantity}-${idx}-${Date.now()}`,
+    status: 'pending',
+    inputMode: item.candidates.length > 0 ? 'select' : 'manual',
+  }))
 }
