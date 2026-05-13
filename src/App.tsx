@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import mascotBee from '../Group 50.png'
 import {
   ApiError,
   apiBlob,
@@ -62,6 +63,14 @@ export default function App() {
     if (rows.length === 0) return []
     return Object.keys(rows[0])
   }, [rows])
+  const canDownload = Boolean(
+    message.trim() &&
+      !busy &&
+      !error &&
+      !needsLlmConfirm &&
+      unmatched.length === 0,
+  )
+  const previewButtonLabel = rows.length > 0 ? 'Пересоздать таблицу' : 'Создать таблицу'
 
   const clearError = useCallback(() => setError(null), [])
 
@@ -260,15 +269,18 @@ export default function App() {
 
   if (!auth) {
     return (
-      <div className="bg-background min-h-svh">
+      <div className="min-h-svh bg-fixed bg-gradient-to-br from-white via-amber-50 to-yellow-200">
         <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-4 py-10">
           <div className="space-y-1 text-center">
-            <h1 className="font-heading text-foreground text-2xl font-semibold tracking-tight">
-              DolionHelper
+            <img
+              src={mascotBee}
+              alt="Momblebee mascot"
+              className="mx-auto mb-3 h-20 w-auto drop-shadow-md"
+            />
+            <h1 className="font-heading text-2xl font-semibold tracking-tight text-black">
+              <span className="text-yellow-600">Mom</span>blebee
             </h1>
-            <p className="text-muted-foreground text-sm">
-              Сообщение → таблица для Долион
-            </p>
+            <p className="text-muted-foreground text-sm">Привет, мам!</p>
           </div>
 
           <Card>
@@ -309,7 +321,7 @@ export default function App() {
               </CardDescription>
             </CardHeader>
             <form onSubmit={handleAuth}>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pb-2">
                 {error ? (
                   <Alert variant="destructive">
                     <AlertTitle>Ошибка</AlertTitle>
@@ -364,23 +376,33 @@ export default function App() {
   }
 
   return (
-    <div className="bg-background min-h-svh">
+    <div className="min-h-svh bg-fixed bg-gradient-to-br from-white via-amber-50 to-yellow-200">
       <header className="border-border bg-card/50 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-3">
-          <div>
-            <p className="font-heading text-foreground text-base font-semibold">
-              DolionHelper
-            </p>
-            <p className="text-muted-foreground text-xs">{auth.email}</p>
+          <div className="flex items-center gap-3">
+            <img
+              src={mascotBee}
+              alt="Momblebee mascot"
+              className="h-10 w-auto shrink-0 drop-shadow-sm"
+            />
+            <div>
+              <p className="font-heading text-base font-semibold text-black">
+                <span className="text-yellow-600">Mom</span>blebee
+              </p>
+              <p className="text-muted-foreground text-xs">Привет, мам!</p>
+            </div>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={logout}>
-            <LogOut />
-            Выйти
-          </Button>
+          <div className="flex items-center gap-3">
+            <p className="text-muted-foreground text-xs">{auth.email}</p>
+            <Button type="button" variant="outline" size="sm" onClick={logout}>
+              <LogOut />
+              Выйти
+            </Button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
         {error ? (
           <Alert variant="destructive">
             <AlertTitle>Ошибка</AlertTitle>
@@ -388,82 +410,128 @@ export default function App() {
           </Alert>
         ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Сообщение</CardTitle>
-            <CardDescription>
-              Вставьте текст. Превью и Excel используют один и тот же текст.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              placeholder="Текст сообщения…"
-              value={message}
-              onChange={(ev) => setMessage(ev.target.value)}
-              className="min-h-[160px] resize-y"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={preview}
-                disabled={busy || !message.trim()}
-              >
-                {busy ? <Loader2 className="animate-spin" /> : null}
-                Превью таблицы
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={downloadXlsx}
-                disabled={busy || !message.trim()}
-              >
-                <FileSpreadsheet />
-                Скачать Excel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Сообщение</CardTitle>
+                <CardDescription>
+                  Вставьте текст. Превью и Excel используют один и тот же текст.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Textarea
+                  placeholder="Текст сообщения…"
+                  value={message}
+                  onChange={(ev) => setMessage(ev.target.value)}
+                  className="min-h-[160px] resize-y"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={preview}
+                    disabled={busy || !message.trim()}
+                  >
+                    {busy ? <Loader2 className="animate-spin" /> : null}
+                    {previewButtonLabel}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={downloadXlsx}
+                    disabled={!canDownload}
+                  >
+                    <FileSpreadsheet />
+                    Скачать Excel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {needsLlmConfirm ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Нужна помощь DeepSeek</CardTitle>
-              <CardDescription>
-                Сообщение не удалось полностью разобрать rule-based алгоритмом. Можно отправить текст во внешний API DeepSeek только после вашего подтверждения.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-muted-foreground text-sm">
-                Причина: {llmReason || 'сложная структура сообщения'}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={runLlmFallback} disabled={busy}>
-                  {busy ? <Loader2 className="animate-spin" /> : null}
-                  Разрешить и продолжить
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => {
-                    setNeedsLlmConfirm(false)
-                    setLlmReason('')
-                  }}
-                >
-                  Отмена
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+          <div className="lg:col-span-4">
+            {needsLlmConfirm ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Нужна помощь DeepSeek</CardTitle>
+                  <CardDescription>
+                    Сообщение не удалось полностью разобрать rule-based алгоритмом. Можно отправить текст во внешний API DeepSeek только после вашего подтверждения.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-muted-foreground text-sm">
+                    Причина: {llmReason || 'сложная структура сообщения'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" onClick={runLlmFallback} disabled={busy}>
+                      {busy ? <Loader2 className="animate-spin" /> : null}
+                      Разрешить и продолжить
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => {
+                        setNeedsLlmConfirm(false)
+                        setLlmReason('')
+                      }}
+                    >
+                      Отмена
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : unmatched.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Нужен выбор сотрудника</CardTitle>
+                  <CardDescription>
+                    Для этих позиций не найдено точное совпадение. Выберите вариант из сметы и добавьте в таблицу.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {unmatched.map((item, idx) => (
+                    <div key={`${item.client_name}-${idx}`} className="border-border rounded-md border p-3 space-y-2">
+                      <p className="text-sm font-medium">
+                        {item.client_name} · {item.quantity} {item.unit || 'шт'}
+                      </p>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select
+                          className="border-border bg-background w-full min-w-0 rounded-md border px-2 py-1 text-sm"
+                          value={picked[idx] ?? item.candidates[0]?.name ?? ''}
+                          onChange={(ev) =>
+                            setPicked((prev) => ({ ...prev, [idx]: ev.target.value }))
+                          }
+                        >
+                          {item.candidates.map((c) => (
+                            <option key={c.name} value={c.name}>
+                              {c.name} ({Math.round(c.score * 100)}%)
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="w-full sm:w-auto"
+                          onClick={() => addSuggestionToRows(idx)}
+                        >
+                          Добавить в таблицу
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        </div>
 
         {rows.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>Превью</CardTitle>
+              <CardTitle>Данные</CardTitle>
               <CardDescription>
-                Колонки пока задаются заглушкой на бэкенде; после согласования
-                формата Dolion они станут финальными.
+                Это не то, что будет в таблице, а удобные данные для тебя
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto px-0 sm:px-4">
@@ -491,81 +559,45 @@ export default function App() {
           </Card>
         ) : null}
 
-        {unmatched.length > 0 ? (
+        <div className="mt-2 border-t border-border/70 pt-8 lg:mt-6 lg:pt-10">
           <Card>
             <CardHeader>
-              <CardTitle>Нужен выбор сотрудника</CardTitle>
+              <CardTitle>История операций</CardTitle>
               <CardDescription>
-                Для этих позиций не найдено точное совпадение. Выберите вариант из сметы и добавьте в таблицу.
+                Последние разборы и экспорты текущего пользователя.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {unmatched.map((item, idx) => (
-                <div key={`${item.client_name}-${idx}`} className="border-border rounded-md border p-3 space-y-2">
-                  <p className="text-sm font-medium">
-                    {item.client_name} · {item.quantity} {item.unit || 'шт'}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      className="border-border bg-background min-w-[320px] rounded-md border px-2 py-1 text-sm"
-                      value={picked[idx] ?? item.candidates[0]?.name ?? ''}
-                      onChange={(ev) =>
-                        setPicked((prev) => ({ ...prev, [idx]: ev.target.value }))
-                      }
+              {historyItems.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Пока нет сохраненных операций.</p>
+              ) : (
+                historyItems.map((item) => (
+                  <div
+                    key={item.parse_job_id}
+                    className="border-border flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{item.source_preview || 'Без превью текста'}</p>
+                      <p className="text-muted-foreground text-xs">
+                        Статус: {item.status} · Строк: {item.rows_count} ·{' '}
+                        {new Date(item.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || item.status !== 'parsed'}
+                      onClick={() => void exportFromHistory(item.parse_job_id)}
                     >
-                      {item.candidates.map((c) => (
-                        <option key={c.name} value={c.name}>
-                          {c.name} ({Math.round(c.score * 100)}%)
-                        </option>
-                      ))}
-                    </select>
-                    <Button type="button" size="sm" onClick={() => addSuggestionToRows(idx)}>
-                      Добавить в таблицу
+                      Повторный Excel
                     </Button>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
-        ) : null}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>История операций</CardTitle>
-            <CardDescription>
-              Последние разборы и экспорты текущего пользователя.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {historyItems.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Пока нет сохраненных операций.</p>
-            ) : (
-              historyItems.map((item) => (
-                <div
-                  key={item.parse_job_id}
-                  className="border-border flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{item.source_preview || 'Без превью текста'}</p>
-                    <p className="text-muted-foreground text-xs">
-                      Статус: {item.status} · Строк: {item.rows_count} ·{' '}
-                      {new Date(item.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || item.status !== 'parsed'}
-                    onClick={() => void exportFromHistory(item.parse_job_id)}
-                  >
-                    Повторный Excel
-                  </Button>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+        </div>
       </main>
     </div>
   )
