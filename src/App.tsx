@@ -37,7 +37,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { FileSpreadsheet, Loader2, LogOut } from 'lucide-react'
+import { Check, FileSpreadsheet, Loader2, LogOut, Pencil, Trash2, X } from 'lucide-react'
 
 const TOKEN_KEY = 'dolionhelper_token'
 const USER_KEY = 'dolionhelper_user'
@@ -77,10 +77,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const columnKeys = useMemo(() => {
-    if (rows.length === 0) return []
-    return Object.keys(rows[0])
-  }, [rows])
+  const [editingRowIdx, setEditingRowIdx] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editQty, setEditQty] = useState('')
   const pendingUnmatched = useMemo(
     () => unmatched.filter((u) => u.status === 'pending'),
     [unmatched],
@@ -259,6 +258,52 @@ export default function App() {
       delete copy[id]
       return copy
     })
+  }
+
+  const getRowName = (row: Record<string, string>) =>
+    (row['Название'] ?? row['Номенклатура'] ?? row['Клиентское название'] ?? '').trim()
+
+  const getRowQty = (row: Record<string, string>) =>
+    (row['Количество'] ?? '').trim()
+
+  const startEditRow = (idx: number) => {
+    const row = rows[idx]
+    if (!row) return
+    setEditingRowIdx(idx)
+    setEditName(getRowName(row))
+    setEditQty(getRowQty(row))
+  }
+
+  const cancelEditRow = () => {
+    setEditingRowIdx(null)
+    setEditName('')
+    setEditQty('')
+  }
+
+  const saveEditRow = (idx: number) => {
+    const name = editName.trim()
+    const qty = editQty.trim().replace(',', '.')
+    if (!name || !qty) return
+    setRows((prev) =>
+      prev.map((row, i) =>
+        i === idx
+          ? {
+              ...row,
+              Название: name,
+              Номенклатура: name,
+              Количество: qty,
+            }
+          : row,
+      ),
+    )
+    cancelEditRow()
+  }
+
+  const removeRow = (idx: number) => {
+    setRows((prev) => prev.filter((_, i) => i !== idx))
+    if (editingRowIdx === idx) {
+      cancelEditRow()
+    }
   }
 
   const skipUnmatched = (id: string) => {
@@ -715,19 +760,83 @@ export default function App() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {columnKeys.map((k) => (
-                      <TableHead key={k}>{k}</TableHead>
-                    ))}
+                    <TableHead>Название</TableHead>
+                    <TableHead>Количество</TableHead>
+                    <TableHead className="w-[170px]">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((row, i) => (
                     <TableRow key={i}>
-                      {columnKeys.map((k) => (
-                        <TableCell key={k} className="max-w-[280px] truncate">
-                          {row[k] ?? ''}
-                        </TableCell>
-                      ))}
+                      <TableCell className="max-w-[360px]">
+                        {editingRowIdx === i ? (
+                          <Input
+                            value={editName}
+                            onChange={(ev) => setEditName(ev.target.value)}
+                            placeholder="Название"
+                          />
+                        ) : (
+                          <span className="block truncate">{getRowName(row)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="w-[160px]">
+                        {editingRowIdx === i ? (
+                          <Input
+                            value={editQty}
+                            onChange={(ev) => setEditQty(ev.target.value)}
+                            placeholder="Количество"
+                          />
+                        ) : (
+                          getRowQty(row)
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {editingRowIdx === i ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="secondary"
+                                onClick={() => saveEditRow(i)}
+                                aria-label="Сохранить"
+                              >
+                                <Check />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="outline"
+                                onClick={cancelEditRow}
+                                aria-label="Отмена"
+                              >
+                                <X />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="outline"
+                                onClick={() => startEditRow(i)}
+                                aria-label="Редактировать"
+                              >
+                                <Pencil />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="outline"
+                                onClick={() => removeRow(i)}
+                                aria-label="Удалить"
+                              >
+                                <Trash2 />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
